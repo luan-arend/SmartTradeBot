@@ -1,76 +1,66 @@
 package br.com.luarend.SmartTradeBot.trading.service;
 
-import br.com.luarend.SmartTradeBot.exchange.BinanceConfig;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import br.com.luarend.SmartTradeBot.exchange.config.BinanceProperties;
+import br.com.luarend.SmartTradeBot.exchange.service.TimestampSyncService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 
 @Service
+@RequiredArgsConstructor
 public class BinanceApiService {
 
-    @Autowired
-    private BinanceConfig binanceConfig;
-
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final BinanceProperties binanceProperties;
+    private final TimestampSyncService timestampSyncService;
+    private final WebClient webClient;
 
     public String getSymbolPrice(String symbol) {
-        String url = binanceConfig.getBaseUrl() + "/v3/ticker/price?symbol=" + symbol;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-MBX-APIKEY", binanceConfig.getKey());
-
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-        return response.getBody();
+        return webClient
+                .get()
+                .uri("/v3/ticker/price?symbol={symbol}", symbol)
+                .header("X-MBX-APIKEY", binanceProperties.getKey())
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
     }
 
     public String getKlines(String symbol, String interval, int limit) {
-        String url = String.format("%s/v3/klines?symbol=%s&interval=%s&limit=%d",
-                binanceConfig.getBaseUrl(), symbol, interval, limit);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-MBX-APIKEY", binanceConfig.getKey());
-
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-        return response.getBody();
+        return webClient
+                .get()
+                .uri("/v3/klines?symbol={symbol}&interval={interval}&limit={limit}",
+                        symbol, interval, limit)
+                .header("X-MBX-APIKEY", binanceProperties.getKey())
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
     }
 
     public String getAccountInfo() {
-        long timestamp = Instant.now().toEpochMilli();
+        long timestamp = timestampSyncService.getSynchronizedTimestamp();
         String queryString = "timestamp=" + timestamp;
         String signature = generateSignature(queryString);
 
-        System.out.printf("Signature: %s%n", signature);
-        System.out.printf("timestamp: %s%n", timestamp);
-        System.out.printf(binanceConfig.getBaseUrl());
-
-        String url = binanceConfig.getBaseUrl() + "/v3/account?" + queryString + "&signature=" + signature;
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-MBX-APIKEY", binanceConfig.getKey());
-
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-        return response.getBody();
+        return webClient
+                .get()
+                .uri("/v3/account?{queryString}&signature={signature}",
+                        queryString, signature)
+                .header("X-MBX-APIKEY", binanceProperties.getKey())
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
     }
 
     private String generateSignature(String data) {
         try {
             Mac sha256Hmac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKey = new SecretKeySpec(binanceConfig.getSecret().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(
+                    binanceProperties.getSecret().getBytes(StandardCharsets.UTF_8),
+                    "HmacSHA256"
+            );
             sha256Hmac.init(secretKey);
 
             byte[] hash = sha256Hmac.doFinal(data.getBytes(StandardCharsets.UTF_8));
