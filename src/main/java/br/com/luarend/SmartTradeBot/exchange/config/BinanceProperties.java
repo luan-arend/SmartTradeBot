@@ -2,7 +2,6 @@ package br.com.luarend.SmartTradeBot.exchange.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.validation.annotation.Validated;
 
 @Data
 @ConfigurationProperties(prefix = "binance.api")

@@ -2,23 +2,29 @@ package br.com.luarend.SmartTradeBot.trading.service;
 
 import br.com.luarend.SmartTradeBot.exchange.config.BinanceProperties;
 import br.com.luarend.SmartTradeBot.exchange.service.TimestampSyncService;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.HexFormat;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class BinanceApiService {
 
-    private final BinanceProperties binanceProperties;
-    private final TimestampSyncService timestampSyncService;
-    private final WebClient webClient;
+    @Autowired
+    private BinanceProperties binanceProperties;
+
+    @Autowired
+    private TimestampSyncService timestampSyncService;
+
+    @Autowired
+    private WebClient webClient;
 
     public String getSymbolPrice(String symbol) {
         return webClient
@@ -45,15 +51,7 @@ public class BinanceApiService {
         try {
             long timestamp = timestampSyncService.getSynchronizedTimestamp();
             String queryString = "timestamp=" + timestamp;
-            String signature = generateSignature(queryString, binanceProperties.getSecret());
-
-            //String encodedSignature = URLEncoder.encode(signature, StandardCharsets.UTF_8);
-            String url = binanceProperties.getBaseUrl() + "/v3/account?" + queryString + "&signature=" + signature;
-
-
-            System.out.println("Query String: " + queryString);
-            System.out.println("Signature: " + signature);
-            System.out.println(binanceProperties.getKey());
+            String url = "/v3/account?" + queryString + "&signature=" + generateSignature(queryString, binanceProperties.getSecret());
 
             return webClient
                     .get()
@@ -63,28 +61,30 @@ public class BinanceApiService {
                     .bodyToMono(String.class)
                     .block();
         } catch (Exception e) {
-            //log.error("Erro na requisição: {}", e.getMessage());
-            return "Erro: 1 " + e.getMessage();
+            log.error("Erro na requisição: {}", e.getMessage());
+            throw new RuntimeException(e);
         }
     }
 
     private String generateSignature(String data, String secret) {
         try {
-            System.out.println("Gerando assinatura HMAC com dados: " + data);
-            System.out.println("Usando segredo: " + secret);
             Mac sha256_HMAC = Mac.getInstance("HmacSHA256");
             SecretKeySpec secret_key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             sha256_HMAC.init(secret_key);
             byte[] hash = sha256_HMAC.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
+
+            StringBuilder hexString = new StringBuilder(2 * hash.length);
             for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
+                hexString.append(String.format("%02x", b));
             }
             return hexString.toString();
+
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            log.error("Erro crítico ao gerar assinatura HMAC: Algoritmo ou chave inválida.", e);
+            throw new RuntimeException("Erro ao gerar assinatura HMAC: Configuração de criptografia inválida.", e);
         } catch (Exception e) {
-            throw new RuntimeException("Erro ao gerar assinatura HMAC", e);
+            log.error("Erro inesperado ao gerar assinatura HMAC para dados: '{}'", data, e);
+            throw new RuntimeException("Erro inesperado ao gerar assinatura HMAC.", e);
         }
     }
 }
