@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
@@ -81,13 +82,23 @@ public class TimestampSyncService {
     }
 
     private long fetchServerTime() {
-        ServerTimeResponse response = webClient
-                .get()
-                .uri(SERVER_TIME_ENDPOINT)
-                .retrieve()
-                .bodyToMono(ServerTimeResponse.class)
-                .block();
+        try {
 
-        return response.getServerTime();
+            ServerTimeResponse response = webClient
+                    .get()
+                    .uri("/v3/time")
+                    .retrieve()
+                    .bodyToMono(ServerTimeResponse.class)
+                    .block(Duration.ofSeconds(5));
+
+            if (response == null) {
+                throw new RuntimeException("Resposta nula do servidor");
+            }
+
+            return response.getServerTime();
+        } catch (Exception e) {
+            log.error("Falha crítica ao obter serverTime", e);
+            throw new RuntimeException(e);
+        }
     }
 }
