@@ -17,6 +17,7 @@ public class BinanceConfig {
     public WebClient binanceWebClient() {
         return WebClient.builder()
                 .baseUrl(binanceProperties.getBaseUrl())
+                .defaultHeader("X-MBX-APIKEY", binanceProperties.getKey())
                 .build();
     }
 }

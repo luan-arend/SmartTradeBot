@@ -1,10 +1,13 @@
 package br.com.luarend.SmartTradeBot.trading.service;
 
+import br.com.luarend.SmartTradeBot.domain.model.Candle;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @Slf4j
 @Service
@@ -27,10 +30,10 @@ public class TradingBotService {
             log.info("Iniciando ciclo de trading...");
 
             String btcPrice = binanceApiService.getSymbolPrice("BTCUSDT");
-            String klines = binanceApiService.getKlines("BTCUSDT", "1m", 100);
+            List<Candle> klines = binanceApiService.getKlines("BTCUSDT", "5m", 100);
 
             log.info("Preço atual BTC: {}", btcPrice);
-            log.debug("Klines: {}", klines);
+            log.info("Klines: {}", klines);
 
         } catch (Exception e) {
             log.error("Erro durante ciclo de trading: {}", e.getMessage(), e);

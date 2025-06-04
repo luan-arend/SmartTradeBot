@@ -1,5 +1,7 @@
 package br.com.luarend.SmartTradeBot.trading.service;
 
+import br.com.luarend.SmartTradeBot.domain.exception.DataParseException;
+import br.com.luarend.SmartTradeBot.domain.model.Candle;
 import br.com.luarend.SmartTradeBot.exchange.config.BinanceProperties;
 import br.com.luarend.SmartTradeBot.exchange.service.TimestampSyncService;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +14,9 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -30,21 +35,41 @@ public class BinanceApiService {
         return webClient
                 .get()
                 .uri("/v3/ticker/price?symbol={symbol}", symbol)
-                .header("X-MBX-APIKEY", binanceProperties.getKey())
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
     }
 
-    public String getKlines(String symbol, String interval, int limit) {
+    public List<Candle> getKlines(String symbol, String interval, int limit) {
         return webClient
                 .get()
                 .uri("/v3/klines?symbol={symbol}&interval={interval}&limit={limit}",
                         symbol, interval, limit)
-                .header("X-MBX-APIKEY", binanceProperties.getKey())
                 .retrieve()
-                .bodyToMono(String.class)
+                .bodyToMono(String[][].class)
+                .map(this::parseCandles)
                 .block();
+    }
+
+    private List<Candle> parseCandles(String[][] response) {
+        return Arrays.stream(response)
+                .map(this::convertToCandle)
+                .collect(Collectors.toList());
+    }
+
+    private Candle convertToCandle(String[] klineData) {
+        try {
+            return new Candle(
+                    Double.parseDouble(klineData[1]),
+                    Double.parseDouble(klineData[2]),
+                    Double.parseDouble(klineData[3]),
+                    Double.parseDouble(klineData[4]),
+                    Double.parseDouble(klineData[5]),
+                    Long.parseLong(klineData[0])
+            );
+        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+            throw new DataParseException("Erro ao converter dados da API Binance", e);
+        }
     }
 
     public String getAccountInfo() {
@@ -56,7 +81,6 @@ public class BinanceApiService {
             return webClient
                     .get()
                     .uri(url)
-                    .header("X-MBX-APIKEY", binanceProperties.getKey())
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
