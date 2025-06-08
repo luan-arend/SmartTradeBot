@@ -10,7 +10,6 @@ import java.util.List;
 /**
  * Implementação do indicador de Média Móvel Simples (SMA).
  * Esta classe é configurada com um período e calcula a SMA para esse período.
- * Não é um @Component, pois será instanciada como um @Bean na configuração.
  */
 @RequiredArgsConstructor
 public class SimpleMovingAverageIndicator implements Indicator<List<Double>> {
@@ -30,7 +29,7 @@ public class SimpleMovingAverageIndicator implements Indicator<List<Double>> {
             } else {
                 double sum = 0.0;
                 for (int j = 0; j < this.period; j++) {
-                    sum += candles.get(i - j).getClose();
+                    sum += candles.get(i - j).getClosePrice();
                 }
                 smaValues.add(sum / this.period);
             }

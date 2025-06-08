@@ -15,34 +15,23 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 public class TradingBotService {
 
-    @Autowired
-    private BinanceApiService binanceApiService;
-
     @Value("${bot.enabled:true}")
     private boolean botEnabled;
 
     @Autowired
+    private BinanceApiService binanceApiService;
+
+    @Autowired
     private Map<String, TradingStrategy> strategies;
-
-    @Value("${bot.strategy.active}")
-    private String activeStrategyName;
-
-    private TradingStrategy activeStrategy;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    @PostConstruct
-    public void init() {
-        this.activeStrategy = strategies.get(activeStrategyName);
-        log.info("Estratégia ativa: {}", activeStrategy.getStrategyName());
-    }
-
-    //@Scheduled(fixedDelayString = "${bot.trading.interval:30000}")
     public void executeTradingCycle() {
         if (!botEnabled) {
             log.debug("Bot está desabilitado");
@@ -52,23 +41,53 @@ public class TradingBotService {
         try {
             log.info("Iniciando ciclo de trading...");
 
-            List<Candle> klines = binanceApiService.getKlines("BTCUSDT", "5m", 100);
+            List<Candle> klines = binanceApiService.getKlines("BTCUSDT", "1m", 100);
 
             log.info("Dados de mercado obtidos: {} candles", klines.size());
 
-            TradeSignal signal = activeStrategy.decide(klines);
+            List<TradeSignal> signals = strategies.values().stream()
+                    .map(strategy -> {
+                        TradeSignal signal = strategy.decide(klines);
+                        log.info("Estratégia '{}' sinalizou: {}", strategy.getStrategyName(), signal);
+                        return signal;
+                    })
+                    .collect(Collectors.toList());
 
-            log.info("Sinal da estratégia {}: {}", activeStrategy.getStrategyName(), signal);
+            TradeSignal finalDecide = consolidateSignals(signals);
 
-            if (signal == TradeSignal.BUY) {
-                log.info("Executando ordem de COMPRA.");
-            } else if (signal == TradeSignal.SELL) {
-                log.info("Executando ordem de VENDA.");
+            log.info("Decisão final: {}", finalDecide);
+
+            if (finalDecide == TradeSignal.BUY) {
+                log.info("Executando ordem de COMPRA com base no consenso das estratégias.");
+            } else if (finalDecide == TradeSignal.SELL) {
+                log.info("Executando ordem de VENDA com base no consenso das estratégias.");
             }
 
         } catch (Exception e) {
             log.error("Erro durante ciclo de trading: {}", e.getMessage(), e);
         }
+    }
+
+    private TradeSignal consolidateSignals(List<TradeSignal> signals) {
+        long buySignals = signals.stream().filter(s -> s == TradeSignal.BUY).count();
+        long sellSignals = signals.stream().filter(s -> s == TradeSignal.SELL).count();
+
+        if (buySignals > 0 && sellSignals > 0) {
+            log.warn("Sinais conflitantes encontrados (COMPRA x VENDA). Nenhuma ação será tomada.");
+            return TradeSignal.HOLD;
+        }
+
+        if (buySignals > 0) {
+            log.info("Consenso para COMPRA validado por {} de {} estratégias.", buySignals, strategies.size());
+            return TradeSignal.BUY;
+        }
+
+        if (sellSignals > 0) {
+            log.info("Consenso para VENDA validado por {} de {} estratégias.", sellSignals, strategies.size());
+            return TradeSignal.SELL;
+        }
+
+        return TradeSignal.HOLD;
     }
 
     public void startBot() {
@@ -78,18 +97,15 @@ public class TradingBotService {
             while (botEnabled) {
                 executeTradingCycle();
                 try {
-                    // Pausa o loop pelo intervalo definido
-                    long intervalInMillis = 30000; // Pode ser lido das properties
+                    long intervalInMillis = 30000;
                     TimeUnit.MILLISECONDS.sleep(intervalInMillis);
                 } catch (InterruptedException e) {
                     log.error("Loop do bot foi interrompido.");
-                    Thread.currentThread().interrupt(); // Restaura o status de interrupção
+                    Thread.currentThread().interrupt();
                 }
             }
             log.info("Loop manual do bot foi finalizado.");
         });
-
-        //executeTradingCycle();
     }
 
     public void stopBot() {

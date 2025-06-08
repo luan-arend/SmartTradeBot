@@ -2,6 +2,7 @@ package br.com.luarend.SmartTradeBot.trading.strategy;
 
 import br.com.luarend.SmartTradeBot.domain.model.Candle;
 import br.com.luarend.SmartTradeBot.trading.indicator.Indicator;
+import br.com.luarend.SmartTradeBot.trading.indicator.SimpleMovingAverageIndicator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
@@ -15,48 +16,39 @@ public class MovingAverageCrossoverStrategy implements TradingStrategy {
     private final Indicator<List<Double>> shortSmaIndicator;
     private final Indicator<List<Double>> longSmaIndicator;
 
-    public MovingAverageCrossoverStrategy(
-            @Qualifier("shortSma") Indicator<List<Double>> shortSmaIndicator,
-            @Qualifier("longSma") Indicator<List<Double>> longSmaIndicator) {
-        this.shortSmaIndicator = shortSmaIndicator;
-        this.longSmaIndicator = longSmaIndicator;
+    public MovingAverageCrossoverStrategy() {
+        this.shortSmaIndicator = new SimpleMovingAverageIndicator(7);
+        this.longSmaIndicator = new SimpleMovingAverageIndicator(40);
     }
 
     @Override
     public TradeSignal decide(List<Candle> klines) {
-        // 1. Calcular os indicadores usando os componentes injetados
         List<Double> shortSma = shortSmaIndicator.calculate(klines);
         List<Double> longSma = longSmaIndicator.calculate(klines);
 
-        if (shortSma.isEmpty() || longSma.isEmpty()) {
+        if (shortSma.isEmpty() || longSma.isEmpty() || shortSma.size() != longSma.size()) {
             log.warn("Dados de mercado insuficientes para a estratégia '{}'.", getStrategyName());
             return TradeSignal.HOLD;
         }
 
-        // 2. Lógica de cruzamento
-        int lastCompleteCandleIndex = klines.size() - 2;
-        int previousCandleIndex = lastCompleteCandleIndex - 1;
+        int lastIndex = shortSma.size() - 1;
+        double lastShortValue = shortSma.get(lastIndex);
+        double lastLongValue = longSma.get(lastIndex);
 
-        if (previousCandleIndex < 0) return TradeSignal.HOLD;
-
-        double lastShortValue = shortSma.get(lastCompleteCandleIndex);
-        double lastLongValue = longSma.get(lastCompleteCandleIndex);
-        double prevShortValue = shortSma.get(previousCandleIndex);
-        double prevLongValue = longSma.get(previousCandleIndex);
-
-        boolean isBuySignal = prevShortValue <= prevLongValue && lastShortValue > lastLongValue;
-        if (isBuySignal) {
-            log.info("SINAL DE COMPRA DETECTADO PELA ESTRATÉGIA {}", getStrategyName());
-            return TradeSignal.BUY;
+        if (lastShortValue == 0.0 || lastLongValue == 0.0) {
+            log.debug("Aguardando aquecimento dos dados para a média móvel.");
+            return TradeSignal.HOLD;
         }
 
-        boolean isSellSignal = prevShortValue >= prevLongValue && lastShortValue < lastLongValue;
-        if (isSellSignal) {
-            log.info("SINAL DE VENDA DETECTADO PELA ESTRATÉGIA {}", getStrategyName());
+        log.info("Estratégia [{}]: Última Média Rápida: {} | Última Média Lenta: {}", getStrategyName(), lastShortValue, lastLongValue);
+
+        if (lastShortValue > lastLongValue) {
+            log.info("SINAL DE COMPRA: Média rápida está ACIMA da lenta.");
+            return TradeSignal.BUY;
+        } else {
+            log.info("SINAL DE VENDA: Média rápida está ABAIXO ou IGUAL à lenta.");
             return TradeSignal.SELL;
         }
-
-        return TradeSignal.HOLD;
     }
 
     @Override
