@@ -6,10 +6,10 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class Candle {
-    private double open;
-    private double high;
-    private double low;
-    private double close;
+    private double openPrice;
+    private double highPrice;
+    private double lowPrice;
+    private double closePrice;
     private double volume;
     private long timestamp;
 }
