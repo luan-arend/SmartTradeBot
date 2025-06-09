@@ -3,6 +3,7 @@ package br.com.luarend.SmartTradeBot.trading.service;
 import br.com.luarend.SmartTradeBot.domain.model.Candle;
 import br.com.luarend.SmartTradeBot.trading.strategy.TradeSignal;
 import br.com.luarend.SmartTradeBot.trading.strategy.TradingStrategy;
+import br.com.luarend.SmartTradeBot.util.TelegramNotification;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,9 @@ public class TradingBotService {
 
     @Autowired
     private Map<String, TradingStrategy> strategies;
+
+    @Autowired
+    private TelegramNotification notification;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -59,8 +63,10 @@ public class TradingBotService {
 
             if (finalDecide == TradeSignal.BUY) {
                 log.info("Executando ordem de COMPRA com base no consenso das estratégias.");
+                notification.sendAlert("Executando ordem de COMPRA com base no consenso das estratégias.");
             } else if (finalDecide == TradeSignal.SELL) {
                 log.info("Executando ordem de VENDA com base no consenso das estratégias.");
+                notification.sendAlert("Executando ordem de VENDA com base no consenso das estratégias.");
             }
 
         } catch (Exception e) {
